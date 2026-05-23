@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey,
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import io
+import json
 
 # =====================================================================
 # MOTORE DATABASE SOSTY (VERSIONE ORIGINALE E LEGGERA)
@@ -69,7 +70,7 @@ def recupera_news_lato_server():
             if titolo is not None and titolo.text:
                 titoli.append(titolo.text.strip())
         if titoli:
-            return " | NOTIZIE NAZIONALI: " + " ••• ".join(titoli)
+            return " | NOTIZIE NAZIONALI: " + " --- ".join(titoli)
     except Exception:
         pass
     return ""
@@ -77,63 +78,7 @@ def recupera_news_lato_server():
 app = FastAPI()
 
 # =====================================================================
-# 🔒 SISTEMA DI AUTENTICAZIONE E SESSIONE COOKIE (GDPR COMPLIANT)
-# =====================================================================
-PASSWORD_GESTIONE = os.getenv("SOSTY_PASSWORD")
-
-# Blocco di sicurezza all'avvio se manca la password nell'ambiente
-if not PASSWORD_GESTIONE:
-    raise RuntimeError("ERRORE DI CONFIGURAZIONE: Configura la variabile d'ambiente SOSTY_PASSWORD prima di avviare l'app.")
-
-def utente_autenticato(request: Request) -> bool:
-    """Verifica la presenza del cookie di sessione nel browser dell'amministratore"""
-    cookie = request.cookies.get("sosty_session")
-    return cookie == "autenticato_sosty_admin"
-
-# --- INTERFACCIA GRAFICA DI LOGIN ---
-@app.get("/login", response_class=HTMLResponse)
-def pagina_login(error: str = None):
-    msg_errore = f"<p style='color:var(--error); font-weight:bold; text-align:center;'>{error}</p>" if error else ""
-    return f"""
-    <!DOCTYPE html><html><head>
-    <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {{ font-family: 'Titillium Web', sans-serif; background: #00264d; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
-        .card {{ background: white; padding: 40px; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 100%; max-width: 360px; border-top: 5px solid #ffab00; box-sizing: border-box; }}
-        h2 {{ color: #00264d; text-align: center; margin-top: 0; text-transform: uppercase; font-size: 20px; line-height: 1.4; }}
-        input[type="password"] {{ width: 100%; padding: 10px; margin: 15px 0; border: 1px solid #d2d6da; border-radius: 4px; box-sizing: border-box; font-size: 16px; }}
-        .btn {{ background: #0066cc; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; text-transform: uppercase; font-size: 13px; }}
-        .btn:hover {{ background: #0052a3; }}
-    </style>
-    <title>Sosty - Login</title></head>
-    <body>
-        <div class="card">
-            <h2>I.C. Tasso Latina<br>Sostituzioni Giornaliere<br>Accesso 🔒</h2>
-            {msg_errore}
-            <form action="/login" method="post">
-                <input type="password" name="password" placeholder="Inserisci Password d'Istituto" required>
-                <button type="submit" class="btn">Accedi al Registro</button>
-            </form>
-        </div>
-    </body></html>
-    """
-
-@app.post("/login")
-def esegui_login(password: str = Form(...)):
-    if password == PASSWORD_GESTIONE:
-        response = RedirectResponse(url="/", status_code=303)
-        response.set_cookie(key="sosty_session", value="autenticato_sosty_admin", httponly=True, samesite="lax")
-        return response
-    return RedirectResponse(url="/login?error=Password+errata", status_code=303)
-
-@app.get("/logout")
-def esegui_logout():
-    response = RedirectResponse(url="/login", status_code=303)
-    response.delete_cookie(key="sosty_session")
-    return response
-
-# =====================================================================
-# STILI CSS GENERALI (SOSTY STYLE ORIGINAL)
+# STILI CSS GENERALI (SOSTY STYLE ORIGINAL - DESIGNERS ITALIA)
 # =====================================================================
 STILE_ITALIA = """
 <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -173,6 +118,10 @@ STILE_ITALIA = """
     th { background: var(--blue-light); color: var(--blue-dark); text-align: left; padding: 10px; border-bottom: 2px solid var(--border); font-size: 13px; text-transform: uppercase; font-weight: 600; }
     td { padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 15px; vertical-align: middle; }
     
+    .badge-ok { background: #d1e7dd; color: #0f5132; padding: 6px 12px; border-radius: 4px; font-weight: 600; display: inline-block; }
+    .badge-ko { background: #f8d7da; color: #842029; padding: 6px 12px; border-radius: 4px; font-weight: 600; display: inline-block; border: 1px solid var(--error); }
+    .badge-assistente { background: var(--assistente-giallo); color: var(--assistente-testo); padding: 6px 12px; border-radius: 4px; font-weight: 600; display: inline-block; border: 1px solid #fbc02d; }
+    
     .select-tabella { width: auto; padding: 8px 12px; font-size: 15px; font-weight: 600; margin-right: 5px; display: inline-block; color: var(--blue-dark); border: 1px solid var(--blue-italia); border-radius: 4px; cursor: pointer; }
     .alert { background: #d1e7dd; color: #0f5132; padding: 12px; border-radius: 4px; border: 1px solid #badbcc; font-weight: 600; margin-bottom: 15px; }
     .date-navigator { background: var(--blue-light); padding: 12px; border-radius: 4px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
@@ -198,9 +147,111 @@ STILE_ITALIA = """
 </script>
 """
 
+# =====================================================================
+# SISTEMA DI ISCRIZIONE E AUTENTICAZIONE DINAMICA
+# =====================================================================
+def utente_autenticato(request: Request) -> bool:
+    cookie = request.cookies.get("sosty_session")
+    return cookie == "autenticato_sosty_admin"
+
+def get_info_scuola(db: Session):
+    nome = db.query(ImpostazioniScuola).filter(ImpostazioniScuola.chiave == "nome_scuola").first()
+    pwd = db.query(ImpostazioniScuola).filter(ImpostazioniScuola.chiave == "password_istituto").first()
+    return nome.valore if nome else None, pwd.valore if pwd else None
+
+@app.get("/login", response_class=HTMLResponse)
+def pagina_login(request: Request, error: str = None, db: Session = Depends(get_db)):
+    nome_scuola, password_salvata = get_info_scuola(db)
+    
+    if not nome_scuola or not password_salvata:
+        return f"""
+        <!DOCTYPE html><html><head>{STILE_ITALIA}<title>Sostituzioni - Iscrizione Istituzionale</title>
+        <style>
+            body {{ display: flex; justify-content: center; align-items: center; height: 100vh; background-color: var(--gray-bg); }}
+            .card-onboarding {{ background: white; padding: 30px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); width: 100%; max-width: 450px; border-top: 4px solid var(--success); }}
+            .card-onboarding h2 {{ margin-top: 0; color: var(--blue-dark); font-size: 22px; border-bottom: 1px solid #ddd; padding-bottom: 8px; text-transform: uppercase; font-weight: 600; text-align: center; }}
+            .card-onboarding p {{ font-size: 15px; color: #555; text-align: center; margin-bottom: 20px; line-height: 1.5; }}
+            .card-onboarding input {{ margin-bottom: 15px; margin-top: 5px; }}
+        </style>
+        </head><body>
+            <div class="card-onboarding">
+                <h2>Iscrizione d'Istituto</h2>
+                <p>Benvenuto in Sosty. Configura la denominazione ufficiale della scuola e crea la chiave d'accesso per attivare il registro delle sostituzioni giornaliere.</p>
+                <form action="/setup-scuola" method="post">
+                    <label>Nome dell'Istituto Scolastico:</label>
+                    <input type="text" name="nome_scuola" placeholder="Inserisci nome scuola" required>
+                    
+                    <label>Crea Password Amministrativa (Gestione):</label>
+                    <input type="password" name="nuova_password" placeholder="Scegli una password" required>
+                    
+                    <button type="submit" class="btn btn-success" style="width:100%; padding:12px; margin-top:10px; font-size:13px;">Attiva Sistema Sostituzioni</button>
+                </form>
+            </div>
+        </body></html>
+        """
+        
+    msg_errore = f"<div class='badge-ko' style='width:100%; text-align:center; box-sizing:border-box; margin-bottom:15px; font-size:14px;'>Attenzione: {error}</div>" if error else ""
+    return f"""
+    <!DOCTYPE html><html><head>{STILE_ITALIA}<title>Sosty - Login</title>
+    <style>
+        body {{ display: flex; justify-content: center; align-items: center; height: 100vh; background-color: var(--gray-bg); }}
+        .card-login {{ background: white; padding: 35px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); width: 100%; max-width: 400px; border-top: 4px solid var(--blue-italia); }}
+        .card-login h2 {{ margin-top: 0; color: var(--blue-dark); font-size: 20px; text-align: center; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 5px; }}
+        .card-login h3 {{ text-align: center; color: var(--blue-italia); font-size: 13px; margin-top: 0; margin-bottom: 25px; font-weight: 600; letter-spacing: 0.5px; }}
+        .card-login input {{ margin-bottom: 20px; margin-top: 5px; }}
+    </style>
+    </head><body>
+        <div class="card-login">
+            <h2>{nome_scuola.upper()}</h2>
+            <h3>GESTIONE SOSTITUZIONI GIORNALIERE</h3>
+            {msg_errore}
+            <form action="/login" method="post">
+                <label>Password di Gestione Istituto:</label>
+                <input type="password" name="password" placeholder="Inserisci la password d'istituto" required>
+                
+                <button type="submit" class="btn" style="width:100%; padding:12px; font-size:13px;">Accedi al Pannello</button>
+            </form>
+        </div>
+    </body></html>
+    """
+
+@app.post("/setup-scuola")
+def esegui_setup_scuola(nome_scuola: str = Form(...), nuova_password: str = Form(...), db: Session = Depends(get_db)):
+    esiste_nome = db.query(ImpostazioniScuola).filter(ImpostazioniScuola.chiave == "nome_scuola").first()
+    if not esiste_nome:
+        db.add(ImpostazioniScuola(chiave="nome_scuola", valore=nome_scuola.strip()))
+        db.add(ImpostazioniScuola(chiave="password_istituto", valore=nuova_password.strip()))
+        db.commit()
+    
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(key="sosty_session", value="autenticato_sosty_admin", httponly=True, samesite="lax")
+    return response
+
+@app.post("/login")
+def esegui_login(password: str = Form(...), db: Session = Depends(get_db)):
+    _, password_corretta = get_info_scuola(db)
+    if password_corretta and password == password_corretta:
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(key="sosty_session", value="autenticato_sosty_admin", httponly=True, samesite="lax")
+        return response
+    return RedirectResponse(url="/login?error=Password+errata", status_code=303)
+
+@app.get("/logout")
+def esegui_logout():
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(key="sosty_session")
+    return response
+
+# =====================================================================
+# INTERFACCIA AMMINISTRATIVA (DASHBOARD)
+# =====================================================================
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, data: str = None, msg: str = None, db: Session = Depends(get_db)):
     if not utente_autenticato(request):
+        return RedirectResponse(url="/login", status_code=303)
+
+    nome_scuola, _ = get_info_scuola(db)
+    if not nome_scuola:
         return RedirectResponse(url="/login", status_code=303)
 
     if not data:
@@ -223,7 +274,7 @@ def dashboard(request: Request, data: str = None, msg: str = None, db: Session =
     
     righe_tabella = ""
     for s in sostituzioni:
-        assente = db.query(Docente).filter(Docente.id == s.assente_id).first()
+        assense = db.query(Docente).filter(Docente.id == s.assente_id).first()
         opzioni_sostituto = f"<option value=''>-- SELEZIONA A MANO --</option>"
         
         for d in tutti_i_docenti:
@@ -242,9 +293,9 @@ def dashboard(request: Request, data: str = None, msg: str = None, db: Session =
         
         righe_tabella += f"""
         <tr>
-            <td>{s.ora}° Ora</td>
+            <td>{s.ora} Ora</td>
             <td>{s.classe}</td>
-            <td>{assente.nominativo.upper() if assente else "SCONOSCIUTO"}</td>
+            <td>{assense.nominativo.upper() if assense else "SCONOSCIUTO"}</td>
             <td>
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
                     {form_assegnazione}
@@ -272,18 +323,18 @@ def dashboard(request: Request, data: str = None, msg: str = None, db: Session =
         pannello_orario = f"""
         <div class="card full-width" style="border-top-color: var(--success); background: #fafafa;">
             <p style="margin:0; font-weight:600; color: var(--success); font-size:16px; display:flex; justify-content:space-between; align-items:center;">
-                <span>✓ Sosty Pronto: Caricati {len(tutti_i_docenti)} record.</span>
+                <span>Modello Sosty configurato: Caricati {len(tutti_i_docenti)} record.</span>
                 <a href="/reset-totale" class="btn btn-danger" style="font-size:11px; padding:6px 12px;">Sostituisci File Orario</a>
             </p>
         </div>
         """
 
     return f"""
-    <!DOCTYPE html><html><head>{STILE_ITALIA}<title>Sosty - Amministrazione</title></head>
+    <!DOCTYPE html><html><head>{STILE_ITALIA}<title>Sostituzioni giornaliere - {nome_scuola}</title></head>
     <body>
         <div class="navbar" style="display:flex; justify-content:space-between; align-items:center;">
-            <h1>Sosty - Pannello Amministrazione e Logistica</h1>
-            <a href="/logout" style="color:white; text-decoration:none; font-weight:bold; font-size:14px; background:var(--error); padding:6px 12px; border-radius:4px;">DISCONNETTI 🚪</a>
+            <h1>Sostituzioni giornaliere - {nome_scuola.upper()}</h1>
+            <a href="/logout" style="color:white; text-decoration:none; font-weight:bold; font-size:14px; background:var(--error); padding:6px 12px; border-radius:4px;">DISCONNETTI</a>
         </div>
         <div class="container">
             <div class="full-width">{banner_notifica}</div>
@@ -331,7 +382,7 @@ def dashboard(request: Request, data: str = None, msg: str = None, db: Session =
                 </table>
                 <div style="margin-top:20px; display:flex; flex-direction:column; gap:12px;">
                     <a href="/totem-corridoio" target="_blank" class="btn" style="background:#ffab00; color:var(--blue-dark); text-align:center;">Apri Schermo Monitor Totem (Oggi)</a>
-                    <a href="/genera-testo?data={str_data_lavoro}" target="_blank" class="btn" style="background:#008758; text-align:center; font-weight:700;">📋 GENERA LOG CIRCOLARE IN TESTO VELOCE</a>
+                    <a href="/genera-testo?data={str_data_lavoro}" target="_blank" class="btn" style="background:#008758; text-align:center; font-weight:700;">GENERA LOG CIRCOLARE IN TESTO VELOCE</a>
                     
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                         <a href="/esporta-log?tipo=giornaliero&data={str_data_lavoro}" class="btn btn-outline" style="text-align:center; font-size:11px; padding:10px;">Download Log Giornaliero (.csv)</a>
@@ -345,7 +396,7 @@ def dashboard(request: Request, data: str = None, msg: str = None, db: Session =
     """
 
 # =====================================================================
-# 📋 FUNZIONE DI GENERAZIONE LOG CIRCOLARE (PROTETTA BY COOKIE)
+# GENERATORE CIRCOLARI ESTERNE / BACHECA
 # =====================================================================
 @app.get("/genera-testo", response_class=HTMLResponse)
 def genera_testo_circolare(request: Request, data: str, db: Session = Depends(get_db)):
@@ -366,7 +417,7 @@ def genera_testo_circolare(request: Request, data: str, db: Session = Depends(ge
             
             tipo_sost = ""
             if sos:
-                if sos.tipo == "sostegno": tipo_sost = " [già compresente]"
+                if sos.tipo == "sostegno": tipo_sost = " [gia compresente]"
                 elif sos.tipo == "potenziamento": tipo_sost = " [da potenziamento]"
                 nome_sost = f"{sos.nominativo.upper()}{tipo_sost}"
             else:
@@ -394,11 +445,11 @@ def genera_testo_circolare(request: Request, data: str, db: Session = Depends(ge
     <!DOCTYPE html><html><head><title>Testo Circolare</title>{STILE_ITALIA}</head>
     <body style="background:var(--blue-dark); padding:30px; display:flex; justify-content:center; align-items:center; min-height:100vh; box-sizing:border-box;">
         <div class="card" style="width:100%; max-width:650px; border-top:6px solid var(--warning);">
-            <h2>Copia il testo per la Bacheca / Messaggi 📋</h2>
+            <h2>Copia il testo per la Bacheca / Messaggi</h2>
             <p style="font-size:14px; color:gray;">Seleziona e copia tutto il testo nel riquadro qui sotto per inviarlo ai colleghi:</p>
             <textarea readonly style="width:100%; height:320px; font-family:monospace; font-size:15px; padding:15px; background:#f8f9fa; border:1px solid #ccc; border-radius:4px; resize:none;" onclick="this.select();">{testo_finale}</textarea>
             <br><br>
-            <a href="/?data={data}" class="btn" style="width:100%; text-align:center; box-sizing:border-box;">⬅ Torna all'Amministrazione</a>
+            <a href="/?data={data}" class="btn" style="width:100%; text-align:center; box-sizing:border-box;">Torna all'Amministrazione</a>
         </div>
     </body></html>
     """
@@ -443,7 +494,7 @@ def esporta_log(request: Request, tipo: str, data: str, db: Session = Depends(ge
     for r in records:
         ass = db.query(Docente).filter(Docente.id == r.assente_id).first()
         sos = db.query(Docente).filter(Docente.id == r.sostituto_id).first() if r.sostituto_id else None
-        writer.writerow([r.data.strftime("%d/%m/%Y"), f"{r.ora}° Ora", r.classe, ass.nominativo if ass else "SCONOSCIUTO", sos.nominativo if sos else "DA ASSEGNARE", sos.tipo if sos else "-", r.timestamp_aggiornamento])
+        writer.writerow([r.data.strftime("%d/%m/%Y"), f"{r.ora} Ora", r.classe, ass.nominativo if ass else "SCONOSCIUTO", sos.nominativo if sos else "DA ASSEGNARE", sos.tipo if sos else "-", r.timestamp_aggiornamento])
     output.seek(0)
     return StreamingResponse(io.BytesIO(output.getvalue().encode("utf-8-sig")), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
@@ -472,6 +523,7 @@ async def import_motore(request: Request, file: UploadFile = File(...), db: Sess
         tipo = row.get('TIPOLOGIA', 'curriculare').strip().lower()
         nome = row.get('NOME', '').strip().upper()
         if not nome: continue
+        
         docente = Docente(nominativo=nome, tipo=tipo)
         db.add(docente); db.flush()
         
@@ -482,10 +534,10 @@ async def import_motore(request: Request, file: UploadFile = File(...), db: Sess
                 if classe and classe != '':
                     db.add(OrarioSettimanale(docente_id=docente.id, giorno_settimana=g, ora_lezione=ora, classe_assegnata=classe))
     db.commit()
-    return RedirectResponse(url="/?msg=File+Modello+importato.+ID+riallineati+da+1+con+successo.", status_code=303)
+    return RedirectResponse(url="/?msg=File+Modello+importato.+Record+sincronizzati.", status_code=303)
 
 # =====================================================================
-# ELABORA ASSENZA (MULTIORARIA DISCOBBLOCCHI, CON ESCLUSIONE FINESETTIMANA)
+# ELABORA ASSENZA
 # =====================================================================
 @app.post("/elabora-assenza")
 def elabora_assenza(request: Request, docente_id: str = Form(...), tipo_assenza: str = Form(...), ore_inserite: str = Form(""), data_assenza: str = Form(...), db: Session = Depends(get_db)):
@@ -499,7 +551,7 @@ def elabora_assenza(request: Request, docente_id: str = Form(...), tipo_assenza:
     target_date = datetime.date.fromisoformat(data_assenza)
     
     if target_date.weekday() in [5, 6]:
-        return RedirectResponse(url=f"/?data={data_assenza}&msg=Errore:+Sabato+e+Domenica+non+sono+giorni+di+lezione.+Seleziona+un+giorno+feriale.", status_code=303)
+        return RedirectResponse(url=f"/?data={data_assenza}&msg=Errore:+Sabato+e+Domenica+non+sono+giorni+di+lezione.", status_code=303)
         
     mappa_giorni = {0: "LUN", 1: "MAR", 2: "MER", 3: "GIO", 4: "VEN"}
     giorno_settimanale_scelto = mappa_giorni[target_date.weekday()]
@@ -519,7 +571,7 @@ def elabora_assenza(request: Request, docente_id: str = Form(...), tipo_assenza:
                     ore_lista.append(int(x_clean))
         
         if not ore_lista:
-            return RedirectResponse(url=f"/?data={data_assenza}&msg=Errore:+Specifica+almeno+un'ora+valida+per+il+permesso.", status_code=303)
+            return RedirectResponse(url=f"/?data={data_assenza}&msg=Errore:+Specifica+le+ore+del+permesso.", status_code=303)
 
         orari_singoli = db.query(OrarioSettimanale).filter(
             OrarioSettimanale.docente_id == doc_id_int, 
@@ -594,7 +646,7 @@ def assegna_manuale(request: Request, sostituzione_id: int = Form(...), sostitut
 
 @app.get("/cancella-giornata")
 def cancella_giornata(request: Request, data: str, db: Session = Depends(get_db)):
-    if not utente_autenticato(request):
+    if not utente_autenticed(request):
         return RedirectResponse(url="/login", status_code=303)
 
     ref_date = datetime.date.fromisoformat(data)
@@ -618,10 +670,13 @@ def reset_totale(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(url="/?msg=Sistema+completamente+resettato.", status_code=303)
 
 # =====================================================================
-# VISTA FRONT-END: MONITOR TOTEM CAROUSEL AD ALTO IMPATTO RESPONSIVE (LIBERA)
+# VISTA FRONT-END: MONITOR TOTEM CAROUSEL
 # =====================================================================
 @app.get("/totem-corridoio", response_class=HTMLResponse)
 def totem_corridoio(db: Session = Depends(get_db)):
+    nome_scuola, _ = get_info_scuola(db)
+    str_scuola = nome_scuola.upper() if nome_scuola else "SOSTITUZIONI GIORNALIERE"
+    
     data_oggi = datetime.date.today()
     sostituzioni = db.query(Sostituzione).filter(Sostituzione.data == data_oggi).order_by(Sostituzione.ora).all()
     
@@ -644,26 +699,25 @@ def totem_corridoio(db: Session = Depends(get_db)):
                 testo_badge += " (ASSISTENTE)"
                 
         elementi_lista.append({
-            "ora": f"{s.ora}° Ora",
+            "ora": f"{s.ora} Ora",
             "classe": s.classe,
             "assente": ass.nominativo.upper() if ass else "SCONOSCIUTO",
             "badge_testo": testo_badge,
             "badge_tipo": tipo_badge
         })
 
-    import json
     json_sostituzioni = json.dumps(elementi_lista)
 
     avviso_db = db.query(ImpostazioniScuola).filter(ImpostazioniScuola.chiave == "avviso_totem").first()
     testo_bacheca = avviso_db.valore.upper() if (avviso_db and avviso_db.valore) else "NESSUN AVVISO CIRCOLARE INSERITO"
-    news_string = f"★ COMUNICAZIONE INTERNA: {testo_bacheca}" + recupera_news_lato_server()
+    news_string = f"COMUNICAZIONE INTERNA: {testo_bacheca}" + recupera_news_lato_server()
 
     return f"""
     <!DOCTYPE html><html>
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Sosty - Monitor Totem</title>
+        <title>Sostituzioni - Monitor Totem</title>
         {STILE_ITALIA}
         <style>
             html, body {{ height: 100%; margin: 0; padding: 0; background: #ffffff; color: var(--text-dark); display: flex; flex-direction: column; overflow: hidden; }}
@@ -701,7 +755,7 @@ def totem_corridoio(db: Session = Depends(get_db)):
         <div class="header-totem">
             <div>
                 <h1>SOSTITUZIONI GIORNALIERE</h1>
-                <p>I.C. TASSO LATINA | SCUOLA SECONDARIA</p>
+                <p>{str_scuola} | MONITOR CORRIDOIO</p>
             </div>
             <div class="live-clock">
                 <div class="ora" id="live-time">00:00:00</div>
@@ -758,7 +812,7 @@ def totem_corridoio(db: Session = Depends(get_db)):
                     return;
                 }}
 
-                labelPagine.innerHTML = "VISUALIZZAZIONE AGGIORNATA • SCHEDA " + (paginaCorrente + 1) + " DI " + pagineCarosello.length;
+                labelPagine.innerHTML = "VISUALIZZAZIONE AGGIORNATA - SCHEDA " + (paginaCorrente + 1) + " DI " + pagineCarosello.length;
                 
                 const datiPagina = pagineCarosello[paginaCorrente];
                 datiPagina.forEach(r => {{
@@ -784,7 +838,7 @@ def totem_corridoio(db: Session = Depends(get_db)):
                 var hh = String(d.getHours()).padStart(2, '0');
                 var mm = String(d.getMinutes()).padStart(2, '0');
                 var ss = String(d.getSeconds()).padStart(2, '0');
-                document.getElementById('live-time').innerHTML = hh + ":" + mm + ":" + ss;
+                document.getElementById('live-time').innerHTML = hh + \":\" + mm + \":\" + ss;
             }}
 
             mostraPaginaCarosello();
