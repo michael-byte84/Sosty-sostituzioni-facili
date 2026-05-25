@@ -646,7 +646,8 @@ def assegna_manuale(request: Request, sostituzione_id: int = Form(...), sostitut
 
 @app.get("/cancella-giornata")
 def cancella_giornata(request: Request, data: str, db: Session = Depends(get_db)):
-    if not utente_autenticed(request):
+    # 🌟 Corretto da 'utente_autenticed' a 'utente_autenticato'
+    if not utente_autenticato(request):
         return RedirectResponse(url="/login", status_code=303)
 
     ref_date = datetime.date.fromisoformat(data)
